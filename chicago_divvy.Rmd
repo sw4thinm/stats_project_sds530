@@ -1,0 +1,738 @@
+---
+title: "Final Project: Chicago Divvy Ridership"
+output:
+  pdf_document: default
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{fontspec}
+  - \setmainfont{Source Sans Pro}
+---
+
+
+
+$\\$
+
+
+
+## Author: Swathi Nachiar Manivannan & Freddy Gonzalez
+
+## Discussants: https://www.kaggle.com/datasets/yingwurenjian/chicago-divvy-bicycle-sharing-data
+
+
+
+
+
+
+
+
+<!--  
+
+
+This is a template for creating your final project report. It lays out the
+sections that should be in your write-up and describes a little about these
+sections. There is some flexibility to deviate from this structure, for example,
+interweaving more visualizations and analyses could work well.
+
+Your report should be between 5-8 pages long and should contain:
+
+    1. Introduction: 
+      a. What is question you are addressing? 
+      b. Why is important? 
+      c. Where did you get the data?
+      d. What other analyses that been done on the data ?
+      
+    2. Visualizations of the data: one or more plots
+    
+    3. Analyses: models, hypothesis tests, confidence intervals and other
+    inferential statistics that give insight into your question
+    
+    4. Conclusions: What you found, future directions, etc.
+    
+    5. Reflection (do be completed on Canvas)
+       a. What went well? 
+       b. What did you struggle with?
+       c. What analyses did you do that you are not including? etc. 
+
+Please make your report look good by paying attention to detail, using
+additional R Markdown features etc.
+
+If there is additional code or data you would like to include with your report,
+please create a GitHub page and add a link to it in your report. Additionally,
+you can append the full code for your analysis in an appendix section at the end
+of the document, and then include only the most important pieces of code in the
+body of the report. For example, you can exclude details of data cleaning from
+the body of the report. However, include anything central to your analyses, and
+also any information about particular choices you made that might affect the
+results, and why you made those choices, in the body of the report (e.g.,
+explain if data was excluded and why, etc.).
+
+
+
+--> 
+
+
+<!-- There are some options that might help make your document look better.  
+Feel free to add additional options here -->
+```{r message=FALSE, warning=FALSE, tidy=TRUE, echo=FALSE}
+
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+
+# This makes sure the code is wrapped to fit when it creates a pdf
+opts_chunk$set(tidy.opts=list(width.cutoff=60))   
+
+
+# Set the random number generator to always give the same random numbers
+set.seed(230) 
+
+```
+
+
+
+
+
+
+
+$\\$
+
+
+
+
+
+
+
+
+
+## Introduction 
+
+
+<!--  
+
+Write ~1-3 paragraphs describing:
+
+1. What is problem you are addressing and why the problem you are addressing is
+interesting.
+
+2. Where you got the data from, including a link to the website where you got
+the data if applicable.
+
+3. What other analyses have already been done with the data and possibly links
+to other analyses. Also mention if you are using the data in another class or
+for another research project.
+
+
+--> 
+
+Bike-sharing systems have been increasingly introduced in cities around the world 
+to offer residents an alternative and more affordable mode of transportation. Particularly 
+in light of increased traffic congestion and anthropogenically caused climate change and 
+pollution, there has been a greater need to offer "greener" modes of transportation in 
+cities as a solution to these issues, and more importantly, incentivise residents to consider 
+these options instead of driving. Bike-sharing systems have been met with mixed success all 
+over the world; while some cities have had successful bike-sharing programs for several years, 
+others have scrapped them within months from their launch. Therefore, in order to ensure the 
+success of bike-sharing systems, there is first and foremost a need to understand trip 
+characteristics so that sensible and sustainable financial decisions can be made 
+based on this information. 
+
+In our project, we are interested in understanding what factors affect Divvy bike trip 
+durations, focusing on the year 2017. Divvy is a bike-sharing system that services 
+the Greater Chicago metropolitan area. It was first introduced in 2013 and has 
+since become an integral part of Chicago, with an annual ridership of more than 
+3 million as of 2019. 
+
+
+```{r}
+# data file
+divy_2017 <- read.csv("divvy_main_2017.csv")
+
+dim(divy_2017)
+head(divy_2017, n = 4)
+```
+
+Below is a visualisation of Divvy bike docking stations across the Greater Chicago metropolitan area.
+
+```{r message=FALSE, warning=FALSE, tidy=TRUE}
+
+library(ggplot2)
+library(ggmap)
+
+# register Google API key
+
+register_google(key = "AIzaSyC5NF4xccTOw2UvjV4PRIElzrX8vr5Yv6U")
+
+# load Chicago map and make sure it plots properly
+# also adjust zoom scale to only visualize loop and surrounding areas 
+# since this is where the majority of the rides seem to start
+
+chicago <- get_map(location = "Chicago", zoom = 13, legend = "bottom")
+
+chicago.map <- ggmap(chicago)
+
+# use lon and lat data to indicate start points that will be used to make
+# map
+
+from <- data.frame(lon = as.numeric(divy_2017$longitude_start), lat = as.numeric(divy_2017$latitude_start))
+
+# visualize map that shows popular divvy starting stations 
+
+chicago.map + 
+  stat_density2d(aes(x=lon, y=lat, fill = ..level..), alpha=0.5, 
+                 size = 2, bins = 8, data=from, geom="polygon") + 
+  scale_fill_gradient(low="red", high="purple4") +
+  ggtitle("Popular Divvy Starting Stations") + 
+  labs(xlab = "Longitude", ylab = "Latitude",  fill = "Density of Stations") + 
+    guides(fill = guide_colourbar(barwidth = 1, barheight = 7))
+
+
+```
+
+The main questions we are asking in our analysis are:
+
+1. How does bike trip duration vary with respect to temporal factors?
+  a. The hour of the day
+  b. The day of the week
+  c. The month of the year
+
+2. How does bike trip duration vary with weather conditions?
+  a. Temperature
+  b. Weather events
+  
+3. How does bike trip duration vary with gender?
+
+
+   
+$\\$   
+   
+    
+
+
+
+
+
+
+
+$\\$
+    
+
+
+### Data wrangling
+
+
+
+<!--  
+
+Very briefly discuss how you got the data into shape for your analyses. You can
+include some code here, although extensive data cleaning code should be put on
+GitHub and/or in an appendix at the end of the document.
+
+--> 
+The original dataset from !Kaggle[https://www.kaggle.com/datasets/yingwurenjian/chicago-divvy-bicycle-sharing-data] contained information on over 9.5 million Divvy 
+bike rides from 2014 to 2017 as well as weather data in Chicago taken from the website 
+wunderground.com. 
+
+Given the large size of the dataset, we have chosen 
+to focus on Divvy bike rides in 2017, which itself consists of 2.96 million rides. We 
+then further filtered this dataset to only focus on rides by Subscriber. Briefly, 
+there are two main types of Divvy riders, subscribers and customers. Subscribers 
+pay $99/yr and get unlimited rides so long as they are under 45 minutes. These 
+are more than often commuters that live in the city and travel to and from work. 
+Customers pay as they go. This is a great option for tourists to see Chicago for 
+cheap. Our summary table of `usertype` indicted that Subscribers were the most 
+common riders during 2017, with a total of 2956854 rides. Because of this, we chose 
+to merely focus on this user type.
+
+Previous work on this dataset has primarily been data visualisation-centred - while 
+trip frequencies and durations have been visualised with respect to different variables,
+to our knowledge there has not been any hypothesis testing or model-fitting
+with respect to trip durations.
+
+
+All files for this project can be found at ![this Github repository](https://github.com/fgonzalez3/stats_final_project), including the ![R script](https://github.com/fgonzalez3/stats_final_project/blob/main/tidydata_initial.R) 
+used to tidy the raw data into the dataset we used for this project.
+
+```{r message=FALSE, warning=FALSE, tidy=TRUE, echo=FALSE}
+# modify types of variables
+divy_2017$month <- as.factor(divy_2017$month)
+divy_2017$day <- as.factor(divy_2017$day)
+divy_2017$hour <- as.factor(divy_2017$hour)
+divy_2017$from_station_name <- as.factor(divy_2017$from_station_name)
+divy_2017$to_station_name <- as.factor(divy_2017$to_station_name)
+divy_2017$gender <- as.factor(divy_2017$gender)
+divy_2017$events <- as.factor(divy_2017$events)
+
+```
+
+
+
+$\\$
+    
+    
+## Analyses    
+
+Before starting on our analyses, we have decided to plot a  histogram showing the distribution of `tripduration` values in the dataset. 
+
+```{r}
+library(cowplot)
+
+init_hist <- ggplot(divy_2017, aes(tripduration)) +
+  geom_histogram(binwidth = .1) + 
+  xlab("Trip Duration (min)") + ylab ("Count") +
+  ggtitle("Distribution of Trip Duration")
+
+
+log_hist <- ggplot(divy_2017, aes(log(tripduration))) +
+  geom_histogram(binwidth = .05) + 
+  xlab("Log (Trip Duration)") + ylab("Count") + 
+  ggtitle("Distribution of Log Trip duration")
+
+plot_grid(init_hist, log_hist, labels = "AUTO")
+
+```
+Given the right-skewed nature of our data (as seen in A) and the underlying assumption of normality for several of the analyses we will be performing, we have decided to log-transform our response variable, `tripduration` (B) and will be carrying out all analyses with the log-transformed response variable, log(trip duration) here on out.
+
+```{r}
+#response variable distribution more closely resembles normal distribution
+
+divy_2017 <- divy_2017 |>
+  mutate(log_tripduration = log(tripduration))
+
+```
+
+
+*For all analyses, significance level is set at $\alpha = 0.05$.*
+
+### Part 1: Do temporal factors affect Divvy bike trip durations?
+
+A series of one-way ANOVAs were carried out to determine if mean Divvy bike trip durations 
+varied with 
+  a. the hour of the day, 
+  b. the day of the week, and 
+  c. the month of the year.
+
+To visualise the data, boxplots for each of the temporal variables were plotted as shown below:
+```{r}
+
+## Boxplot visualisation of bike trip duration vs. hour of the day
+
+hour_plot <- ggplot(divy_2017, aes(hour, log_tripduration, fill = hour)) +
+  geom_boxplot() +
+  xlab("Hour of the Day") +
+  ylab("Log(Trip Duration)") +
+  ggtitle("Log(Trip Duration) vs. Hour")
+
+## Boxplot visualisation of bike trip duration vs. hour of the day
+
+day_plot <- ggplot(divy_2017, aes(day, log_tripduration, fill = day)) +
+  geom_boxplot() +
+  xlab("Day of the Week") +
+  ylab("Log(Trip Duration)") +
+  ggtitle("Log(Trip Duration) vs. Day")
+
+
+## Boxplot visualisation of bike trip duration vs. hour of the day
+
+month_plot <- ggplot(divy_2017, aes(month, log_tripduration, fill = month)) +
+  geom_boxplot() +
+  xlab("Month of the Year") +
+  ylab("Log(Trip Duration)") +
+  ggtitle("Log(Trip Duration) vs. Month")
+
+plot_grid(hour_plot, day_plot, month_plot, labels = "AUTO")
+
+```
+
+From the boxplots, it can be seen that there is variability in average log(trip duration) with respect to the different factor levels in all three temporal variables (hour of the day, day of the week, month of the year), thus, it seems likely that these three temporal variables would be significant predictors of Divvy bike trip duration.
+
+
+
+#### a: Trip duration vs. hour of the day
+
+**Null hypothesis:** There is no significant difference in mean bike trip durations 
+between all hours of the day.
+**Alternative hypothesis:** The mean bike trip durations differed for at least one hour of the day.
+
+$H_0: \mu_0 = \mu_1 = ... =  \mu_{23}$
+$H_A: \mu_i \ne \mu_j \text{ for any i, j in {0, 1, ... , 23}}$
+
+
+```{r}
+
+## One-way ANOVA for log trip duration & hour 
+anova_fit <- lm(log_tripduration ~ hour, data = divy_2017)
+anova(anova_fit)
+
+### summary stats & residuals for anova_fit
+
+summary_stats <- divy_2017 |>
+  group_by(hour) |>
+  summarise(sd = sd(tripduration))
+max(summary_stats$sd)/min(summary_stats$sd)
+
+summary_residuals <- divy_2017 |>
+  group_by(hour) |>
+  mutate(mean_duration = mean(log(tripduration)),
+         residual = log(tripduration) - mean_duration)
+qqnorm(summary_residuals$residual)
+
+```
+
+The p-value for the ANOVA was almost equal to 0, therefore, we can conclude that there is statistically significant evidence to reject the null hypothesis and that the mean bike trip durations differ for at least one hour of the day. A post-hoc Tukey's HSD test (see Appendix for results) showed that mean trip duration significantly differed between at least 70% of all possible pairs of hours (p < 0.05).
+
+
+#### b: Trip duration vs. day of the week
+
+**Null hypothesis:** There is no significant difference in mean bike trip duration 
+between all days of the week.
+**Alternative hypothesis:** The mean bike trip duration differed for at least one day of the week.
+
+$H_0: \mu_0 = \mu_1 = ... =  \mu_6$
+$H_A: \mu_i \ne \mu_j \text{ for any i, j in {0, 1, ... , 6}}$
+
+Note that 0, 1, 2, 3, 4, 5, 6 corresponds to Monday, Tuesday, Wednesday, Thursday, Friday, Saturday and Sunday respectively.
+
+```{r}
+
+## One-way ANOVA for log trip duration & day 
+anova_fit <- lm(log_tripduration ~ day, data = divy_2017)
+anova(anova_fit)
+
+```
+
+The p-value for the ANOVA was almost equal to 0, therefore, we can conclude that there is statistically significant evidence to reject the null hypothesis and that the mean bike trip durations differ for at least one day of the week. A post-hoc Tukey's HSD test (see Appendix for results) showed that mean trip duration significantly differed between all pairs of days (p < 0.05) except for Monday-Tuesday (adjusted p-value = 0.902) and Wednesday-Thursday (adjusted p-value = 0.288).
+
+
+#### c: Trip duration vs. month of the year
+
+**Null hypothesis:** There is no significant difference in mean bike trip duration 
+between all months of the year.
+**Alternative hypothesis:** The mean bike trip duration differed for at least one month of the year.
+
+$H_0: \mu_1 = \mu_2 = ... =  \mu_{12}$
+$H_A: \mu_i \ne \mu_j \text{ for any i, j in {1, 2, ... , 12}}$
+
+```{r}
+
+
+## One-way ANOVA
+anova_fit <- lm(log_tripduration ~ month, data = divy_2017)
+anova(anova_fit)
+
+```
+
+The p-value for the ANOVA was almost equal to 0, therefore, we can conclude that there is statistically significant evidence to reject the null hypothesis and that the mean bike trip durations differ for at least one month of the year. A post-hoc Tukey's HSD test (see Appendix for results) showed that mean trip duration significantly differed between all pairs of months (p < 0.05) except for March-November (adjusted p-value = 0.386) and May-September (adjusted p-value = 0.931).
+
+
+#### d. Additional analysis
+
+From the one-way ANOVAs, having seen that Divvy bike trip duration differed significantly with respect to hour of the day, day of the week and month of the year, we also wanted to conduct two-way ANOVAs to determine if there were any additional interactions between the three temporal variables that could have an effect on bike trip duration.  
+
+**Null hypotheses:** Divvy bike trip duration is not affected by any of the three temporal variables and/or their interactions.
+**Alternative hypotheses:** Divvy bike trip duration is affected by at least one of the temporal variables and/or their interactions.
+
+*Main effect: month*
+$H_0: \alpha_1 = \alpha_2 = ... =  \alpha_{12}$
+$H_A: \alpha_i \ne \alpha_j \text{ for any i, j in {1, 2, ... , 12}}$
+
+*Main effect: day*
+$H_0: \beta_0 = \beta_1 = ... =  \beta_6$
+$H_A: \beta_i \ne \beta_j \text{ for any i, j in {0, 1, ... , 6}}$
+
+*Main effect: hour*
+$H_0: \gamma_0 = \gamma_1 = ... =  \gamma_{23}$
+$H_A: \gamma_i \ne \gamma_j \text{ for any i, j in {0, 1, ... , 23}}$
+
+*Interaction effect: month-day*
+$H_0: \text{All }\delta_{ij} = 0$
+$H_A: \delta_{ij} \ne 0 \text{ for some i,j}$
+
+*Interaction effect: day-hour*
+$H_0: \text{All }\theta_{jk} = 0$
+$H_A: \theta_{jk} \ne 0 \text{ for some j,k}$
+
+*Interaction effect: month-hour*
+$H_0: \text{All }\kappa_{ik} = 0$
+$H_A: \kappa_{ik} \ne 0 \text{ for some i,k}$
+
+
+
+```{r}
+
+multi_int_fit1 <- aov(log_tripduration ~ hour * day, data = divy_2017)
+summary(multi_int_fit1)
+
+multi_int_fit2 <- aov(log_tripduration ~ day * month, data = divy_2017)
+summary(multi_int_fit2)
+
+
+multi_int_fit3 <- aov(log_tripduration ~ month * hour, data = divy_2017)
+summary(multi_int_fit3)
+
+```
+
+For all three two-way ANOVAs (hour and day, day and month, month and hour), the p-values for the main effects and interaction effects were 0, which suggests that there is sufficient evidence to conclude that the main effects (hour, day, month) and their one-on-one interactions with each other (hour:day, day:month, month:hour) are significant predictors of Divvy bike trip duration.
+
+
+### Part 2: Do weather conditions affect Divvy bike trip duration?
+
+A couple of analyses were carried out to determine if mean Divvy bike trip durations 
+varied with respect to
+  a. temperature (ºF) and
+  b. weather events
+  
+For (a), a linear regression was fitted and for (b), a one-way ANOVA was carried out for the weather events.
+
+To visualise the data, a scatter plot was plotted for trip duration vs. temperature, and a boxplot for trip duration vs. weather event are plotted:
+
+
+```{r}
+
+temp_plot <- ggplot(divy_2017, aes(temperature, log_tripduration)) +
+  geom_point(alpha = .3) +
+  xlab("Temperature (ºF)") +
+  ylab("Log(Bike Ride Duration)")
+  geom_smooth(method = "lm", col = "red") 
+
+weather_plot <- ggplot(divy_2017, aes(events, log_tripduration, fill = events)) +
+  geom_boxplot() +
+  xlab("Weather Event") +
+  ylab("Log(Trip Duration)") +
+  ggtitle("Log(Trip Duration) vs. Weather Event") + labs (fill = "Events")
+
+plot_grid(temp_plot, weather_plot, labels = "AUTO")
+
+
+```  
+Based on the visualizations, for trip durations vs temperature, while there is huge variance in log(trip duration) across all temperatures, the regression line fitted seems to have a slight positive slope, which suggests that there might be an association between trip duration and temperature. As for trip duration vs. weather events, the boxplot depicts variation in average log(trip duration) between the different events, which suggests that the mean trip duration might have varied for at least one of the weather events. 
+
+
+#### a: Trip duration vs. temperature (ºF)
+
+**Null hypothesis:** There is no association between trip duration and temperature.
+**Alternative hypothesis:** There is an association between trip duration and temperature.
+
+$H_0: \beta_1 = 0$
+$H_A: \beta_1 \ne 0$
+
+ 
+```{r}
+## Linear regression
+lm_fit <- lm(log_tripduration ~ temperature, data = divy_2017)
+summary(lm_fit)
+
+```
+
+
+#### b: Trip duration vs. weather events
+
+Besides temperature, there is another weather variable in the dataset, `events`, which has 5 factor levels:
+- clear
+- not clear (fog, haze, etc)
+- cloudy
+- rain or snow
+- tstorms (thunderstorms)
+
+Here, we carried out a one-way ANOVA to test whether bike trip durations varied with respect to weather events.
+
+**Null hypothesis:** There is no difference in mean trip duration across the 5 different precipitation events.
+**Alternative hypothesis:** The mean trip duration differed for at least one of the precipitation events.
+
+
+$H_0: \mu_{clear} = \mu_{not clear} = \mu_{rain or snow} = \mu_{cloudy} =  \mu_{tstorms}$
+$H_A: \mu_i \ne \mu_j \text{ for any one of the five events}$
+
+
+```{r}
+
+## One-way ANOVA
+anova_fit <- lm(log_tripduration ~ events, data = divy_2017)
+anova(anova_fit)
+
+pairwise_fit <- aov(log_tripduration ~ events, data = divy_2017)
+TukeyHSD(pairwise_fit)
+
+```
+
+The p-value for the ANOVA was almost equal to 0, therefore, we can conclude that there is statistically significant evidence to reject the null hypothesis and that the mean bike trip durations differ for at least one weather event. A post-hoc Tukey's HSD test showed that mean trip duration significantly differed between all pairs of events.
+
+#### c: Additional analysis
+
+Based on the results from part a and b, we also wanted to know if trip durations could be explained by both temperature and weather events, as well as any interaction between temperature and weather events. To test this, we fitted a multiple regression model of trip duration with respect to temperature and weather events:
+
+```{r}
+
+# additive model
+add_fit <- lm(log_tripduration ~ temperature + events, data = divy_2017)
+summary(add_fit)
+
+# model with interactions
+multi_fit <- lm(log_tripduration ~ temperature * events, data = divy_2017)
+summary(multi_fit)
+
+# testing whether additive model or model with interactions can account for more variability
+anova(add_fit, multi_fit)
+
+# multiple regression plot with interactions
+ggplot(divy_2017, aes(temperature, log_tripduration, shape = events)) +
+  geom_point(alpha = .1) +
+  xlab("Temperature (ºF)") +
+  ylab("Log(Bike Ride Duration)") +
+  geom_smooth(method = "lm", aes(color = events))
+```  
+
+For the additive model (i.e. main effects only), it can be seen that the p-values for temperature and all factor levels of weather events are less than 0.05 and hence significant, which suggests that there is statistically sufficient evidence that trip duration can be explained by temperature and weather events.
+
+For the model that considers the interaction between temperature and weather events, it can be seen that while temperature remains a significant predictor (p-value = 0), three levels under weather events (`cloudy`,`not clear`, `rain or snow`) have been "dropped" as significant predictors (p-values = 0.192, 0.387, 0.264 respectively), whereas with the exception of temperature:not clear (p = 0.0774), almost all temperature:weather events seem to be significant predictors of trip duration (p-values < 0.05). Comparing the additive and interaction model using an ANOVA, a p-value of 0 was reported, which suggests that there is sufficient evidence that the interaction between temperature and weather event is a significant predictor of trip duration.
+
+Therefore, for any subsequent model considering more than one predictor with respect to trip duration, it seems likely that temperature and temperature:weather events might be significant predictors, but not weather events alone.
+
+
+### Part 3: Do Divvy bike trip durations vary between gender?
+
+Here, we were interested in understanding whether Divvy bike trip durations were different for male and female subscribers, and carried out a one-way ANOVA to determine if there was a significant difference between mean male and female trip durations.
+
+Below is a boxplot visualisation of bike trip durations vs gender, which seems to suggest that there is a difference in trip duration between females and males, with females having a higher trip duration than males on average.
+
+```{r}
+ggplot(divy_2017, aes(gender, log_tripduration, fill = gender)) +
+  geom_boxplot() +
+  xlab("Gender") +
+  ylab("Log(Trip Duration)") +
+  ggtitle("Log(Trip Duration) vs. Gender") + labs(fill = "Gender")
+
+```  
+
+**Null hypothesis:** There is no difference in mean trip duration between males and females.
+**Alternative hypothesis:** The mean trip duration differed between males and females.
+
+$H_0: \mu_{males} = \mu_{females}$
+$H_A: \mu_{males} \ne \mu_{females}$
+
+```{r}
+
+anova_fit <- lm(log_tripduration ~ gender, data = divy_2017)
+anova(anova_fit)
+
+```
+
+The p-value for the ANOVA was almost equal to 0, therefore, we can conclude that there is statistically significant evidence to reject the null hypothesis and that the mean bike trip durations differ between males and females. 
+
+
+
+$\\$
+
+## Conclusion 
+
+
+
+<!--  
+
+
+~1-2 paragraphs summarizing what you found, how the findings address your
+question of interest, and possible future directions. Please make sure describe
+your conclusions in an intuitive way, and make sure that your argument is strong
+and backed by solid evidence from your data.
+
+
+
+-->
+
+
+In summary, our analysis aimed to determine what factors affect Divvy bike trip 
+durations, based on Divvy bike rides in Chicago on 2017. In our analysis, we considered 
+temporality (hour of the day, day of the week, month of the year), weather (temperature 
+and weather events) and gender (male or female) and found that individually, all 
+predictor variables tested seemed to be statistically significant; however when 
+multiple variables (and their interactions) were considered at once, some predictors,
+such as weather events, ended up being dropped off as a significant predictor.
+
+While this dataset focuses on one bike sharing system in a particular city for a 
+given year, these analyses could be equally useful and relevant to characterising 
+bike rides in other bike sharing systems across the world. 
+
+
+
+
+
+
+
+$\\$
+
+
+
+
+
+
+## Reflection
+
+
+<!--  
+
+
+Reflection  
+
+Write one paragraph describing what went well with this project and what was
+more difficult. Also describe any additional things you tried that you did not
+end up including in this write-up, and approximately how much time you spend
+working the project.
+
+Finally, please go to Canvas and answer a few questions related to how this project went: https://yale.instructure.com/courses/79947/quizzes/52421
+
+
+
+-->
+
+The Divvy dataset contained a meaningful amount of information that was used to 
+identify significance among variables that may have affected trip duration 
+(e.g. temperature, weather events, etc). We did not struggle finding factors 
+that we could use for models and visualizations. However, this also made it difficult 
+to pinpoint what we wanted to use for this analysis. Things that were not included 
+in the write-up were visualizations of total rides by day, hour, week, month, as 
+well as proportions of rides throughout the week. We did not find that these 
+meaningfully contributed to our analysis. We spent approx. a week working on this 
+analysis.
+
+$\\$
+
+
+
+
+## Appendix
+
+
+### A: Pairwise comparisons for ANOVAs
+
+
+```{r}
+
+## pairwise comparisons - trip duration vs hour
+
+pairwise_fit <- aov(log_tripduration ~ hour, data = divy_2017)
+TukeyHSD(pairwise_fit)
+
+## pairwise comparisons - trip duration vs day
+
+pairwise_fit <- aov(log_tripduration ~ day, data = divy_2017)
+TukeyHSD(pairwise_fit)
+
+## pairwise comparisons - trip duration vs month
+
+pairwise_fit <- aov(log_tripduration ~ month, data = divy_2017)
+TukeyHSD(pairwise_fit)
+
+```
+
+
+<!--  
+
+
+You can include a complete listing of your code here if you could not fit it
+into the body of the document. Make sure your code is well commented and easy to
+read - i.e., use meaningful object names, separate your code into sections,
+describe what each section is doing, use good formatting, etc.
+
+
+-->
+
